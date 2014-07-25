@@ -1,20 +1,17 @@
 package xlong.backuper.object;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.io.Serializable;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map.Entry;
 import java.util.TreeMap;
-import java.util.zip.DataFormatException;
-
-import xlong.backuper.util.CompressionUtil;
-import xlong.backuper.util.SHA1Util;
 
 /**
  * A treeBuilder contains a map from directories and files to nicknames.
@@ -25,9 +22,12 @@ import xlong.backuper.util.SHA1Util;
  * @author Xiang Long (longx13@mails.tsinghua.edu.cn)
  *
  */
-public class TreeBuilder implements Serializable {
+public final class TreeBuilder extends BackupObject implements Serializable {
 	/** for serialization. */
 	private static final long serialVersionUID = 1742196086528443955L;
+	
+	/** separator. */
+	private static final String SEPARATOR = ",>>>>,";
 	
 	/** the map. */
 	private TreeMap<String, String> map;
@@ -37,13 +37,14 @@ public class TreeBuilder implements Serializable {
 	 */
 	public TreeBuilder() {
 		map = new TreeMap<String, String>();
+		calChecksum();
 	}
 	
 	/**
 	 * Gets map.
 	 * @return map
 	 */
-	public final TreeMap<String, String> getMap() {
+	public TreeMap<String, String> getMap() {
 		return map;
 	}
 	
@@ -54,51 +55,89 @@ public class TreeBuilder implements Serializable {
 	 * @param nick the nickname
 	 * @return success or not
 	 */
-	public final boolean add(final String path, final String nick) {
-		if (map.containsKey(path) || map.containsValue(nick)) {
+	public boolean add(final Path path, final Path nick) {
+		if (map.containsKey(path.toString()) 
+				|| map.containsValue(nick.toString())) {
 			return false;
 		}
-		map.put(path, nick);
+		map.put(path.toString(), nick.toString());
+		calChecksum();
 		return true;
-	}
-	/**
-	 * Save this treeBuilder.
-	 * @return SHA-1 checksum of this treeBuilder
-	 * @throws IOException IOException
-	 */
-	public final String save() throws IOException {
-		ByteArrayOutputStream bs = new ByteArrayOutputStream();
-        ObjectOutputStream os = new ObjectOutputStream(bs);   
-        os.writeObject(this);
-        String content = new String(bs.toByteArray(), "ISO-8859-1");
-        String checksum = SHA1Util.sha1Checksum(content, true);
-        
-		Path outFilePath = Paths.get(BackupObject.checksumToPath(checksum));
-		Files.createDirectories(outFilePath.getParent());
-        CompressionUtil.compress(content, outFilePath.toString(), true);
-        return checksum;
 	}
 	
 	/**
-	 * Load this treeBuilder.
-	 * @param checksum the checksum
-	 * @return the treeBuilder
-	 * @throws IOException IOException
-	 * @throws ClassNotFoundException ClassNotFoundException 
-	 * @throws DataFormatException DataFormatException
+	 * Remove a path, return its nick. If not exist return null.
+	 * @param path file path
+	 * @return nickname
 	 */
-	public static final TreeBuilder load(final String checksum)
-			throws IOException, ClassNotFoundException, DataFormatException {
-		String filePath = BackupObject.checksumToPath(checksum);
-		String content = CompressionUtil.decompress(filePath);	
-		System.out.println(content);
-		
-		ByteArrayInputStream bi = 
-				new ByteArrayInputStream(content.getBytes("ISO-8859-1"));
-        ObjectInputStream oi = new ObjectInputStream(bi);   
-        TreeBuilder tb = (TreeBuilder) oi.readObject();
-        
-        return tb;
+	public String delPath(final Path path) {
+		if (map.containsKey(path.toString())) {
+			String nick = map.get(path.toString());
+			map.remove(path.toString());
+			return nick;
+		} else {
+			return null;
+		}
+	}
+	
+	/**
+	 * Create a treeBuilder with given setting file.
+	 * 
+	 * @param path the setting file
+	 * @return the tree. If fail, return null.
+	 * @throws IOException if an I/O error occurs
+	 */
+	public static TreeBuilder create(final Path path) throws IOException {
+		TreeBuilder tb = new TreeBuilder();	
+	    BufferedReader in = 
+                new BufferedReader(
+                new InputStreamReader(
+                new FileInputStream(path.toString()), "GB2312"));
+        String line = null;
+        while ((line = in.readLine()) != null) {
+            String[] ss = line.split(SEPARATOR);
+            if (ss.length == 2) {
+                tb.add(Paths.get(ss[0]), Paths.get(ss[1]));
+            }
+        }
+        in.close();
+		return tb;
+	}
+	
+	/**
+	 * Restore the treeBuilder to the given file.
+	 * If the file is already exist,
+	 * this method will rewrite the file.
+	 * If the output directory not exist,
+	 * this method will create the directory.
+	 * 
+	 * @param outFilePath the path of the file restores to
+	 * @return totally success or not.
+	 * @throws IOException if an I/O error occurs
+	 */
+	@Override
+	public boolean restore(final Path outFilePath) throws IOException {
+	    BufferedWriter out = 
+                new BufferedWriter(
+                new OutputStreamWriter(
+                new FileOutputStream(outFilePath.toString()), "GB2312"));
+		for (Entry<String, String> en:map.entrySet()) {
+			out.write(en.getKey() + SEPARATOR + en.getValue() + "\n");
+		}
+		out.close();
+		return true;
+	}
+	
+	/**
+	 * Get the treeRestorer corresponds to this treeBuilder.
+	 * @return the treeRestorer
+	 */
+	public TreeRestorer getRestorer() {
+		TreeRestorer tr = new TreeRestorer();
+		for (Entry<String, String> en:map.entrySet()) {
+			tr.add(Paths.get(en.getValue()), Paths.get(en.getKey()));
+		}
+		return tr;
 	}
 	
 	/**
@@ -106,76 +145,18 @@ public class TreeBuilder implements Serializable {
 	 * @return string
 	 */
 	@Override
-	public final String toString() {
-		String s = "";
+	public String toString() {
+		return "Tree Builder " + getChecksum() + "\n";
+	}
+	/**
+	 * List maps.
+	 * @return string
+	 */
+	public String list() {
+		String s = toString();
 		for (Entry<String, String> en:map.entrySet()) {
 			s += en.getKey() + " -> " + en.getValue() + "\n";
 		}
 		return s;
 	}
-	
-	/**
-	 * Get the treeRestorer corresponds to this treeBuilder.
-	 * @return the treeRestorer
-	 */
-	public final TreeRestorer getRestorer() {
-		TreeRestorer tr = new TreeRestorer();
-		for (Entry<String, String> en:map.entrySet()) {
-			tr.add(en.getValue(), en.getKey());
-		}
-		return tr;
-	}
-	
-	/**
-	 * Testing code.
-	 * @param args args
-	 */
-	public static void main(final String[] args) {
-		TreeBuilder tb = new TreeBuilder();
-		tb.add("data/tree/dir", "backup1/folder/tree");
-		tb.add("data/tree/newdir", "backup2/folder/tree");
-		tb.add("data/test", "backup1/file/test");
-		
-		// test save and load
-		String cs = null;
-		try {
-			cs = tb.save();
-			System.out.println(cs);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		try {
-			tb = TreeBuilder.load(cs);
-		} catch (ClassNotFoundException | IOException | DataFormatException e) {
-			e.printStackTrace();
-		}
-		System.out.println(tb.toString());
-		
-		//test create tree
-		Tree tree = null;
-		try {
-			tree = Tree.create(tb);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		System.out.println(tree.toString());
-		System.out.println(tree.listAll());
-		try {
-			tree.restore("data/treeBuilderRestore");
-		} catch (IOException | DataFormatException e) {
-			e.printStackTrace();
-		}
-		
-		//test Restorer
-		TreeRestorer tr = tb.getRestorer();
-		try {
-			tr.save("data/treeRestore.tr");
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		System.out.println(tr.toString());
-	}
-	
-	
-	
 }

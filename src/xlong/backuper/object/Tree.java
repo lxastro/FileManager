@@ -9,9 +9,6 @@ import java.util.Map.Entry;
 import java.util.TreeMap;
 import java.util.zip.DataFormatException;
 
-import xlong.backuper.util.CompressionUtil;
-import xlong.backuper.util.SHA1Util;
-
 /**
  * A tree object contains a map of blob nicknames to blob objects
  *  and a map of tree nicknames to other tree objects.
@@ -30,167 +27,92 @@ import xlong.backuper.util.SHA1Util;
  */
 public final class Tree extends BackupObject {
 	
+	/** for serialization. */
+	private static final long serialVersionUID = -8205593088522114084L;
+	
+	/** for INDENT. */
+	private static final String INDENT = "    ";
+	
 	/** the map of blob nicknames to blob objects. */
 	private TreeMap<String, Blob> blobs;
 	/** the map of tree nicknames to tree objects. */
 	private TreeMap<String, Tree> trees;
 	
 	/**
-	 * Default constructor. Initialize lists.
+	 * Default constructor. Initialize maps.
 	 */
 	private Tree() {
 		blobs = new TreeMap<>();
 		trees = new TreeMap<>();
-		calName();
+		calChecksum();
 	}	
 	
 	/**
-	 * Calculate the name of this tree.
-	 * <p>
-	 * Sort blobs, trees, blobNames and treeNames by their names.
-	 * Calculate SHA-1 checksum of this tree using string of list method.
-	 * Set the name of this tree to "checksum[0-1]/checksum[2-39]".
-	 * The blobs and trees list with their name cannot have duplicate.
-	 */
-	private void calName() {
-		String checksum = null;
-		checksum = SHA1Util.sha1Checksum(list(), true);
-		setName(checksumToName(checksum));		
-	}
-	
-	/**
 	 * Get blobs map.
-	 * @return blobs list
+	 * @return blobs map
 	 */
 	public TreeMap<String, Blob> getBlobs() {
 		return blobs;
 	}
 	
 	/**
-	 * Get trees list.
-	 * @return trees list
+	 * Get trees map.
+	 * @return trees map
 	 */
 	public TreeMap<String, Tree> getTrees() {
 		return trees;
 	}
-
-	/**
-	 * Get the string contains blobs and their names.
-	 * @return the string contains blobs and their names
-	 */
-	public String listBlobs() {
-		String s = "";
-		for (Entry<String, Blob> en:blobs.entrySet()) {
-			Blob blob = en.getValue();
-			String nick = en.getKey();
-			s += "blob " + blob.toString() + " " + nick + "\n";
-		}
-		return s;
-	}
 	
 	/**
-	 * Get the string contains trees and their names.
-	 * @return the string contains trees and their names
+	 * Get the object with give nickname path.
+	 * If exist both tree and blob, return blob.
+	 * If not exist return null.
+	 * @param path the nickname path.
+	 * @return the backup object
 	 */
-	public String listTrees() {
-		String s = "";
-		for (Entry<String, Tree> en:trees.entrySet()) {
-			Tree tree = en.getValue();
-			String nick = en.getKey();
-			s += "tree " + tree.toString() + " " + nick + "\n";
-		}
-		return s;
-	}
-
-	/**
-	 * Get the object with give nickname.
-	 * @param nick the nickname, may be path.
-	 * @return the object
-	 */
-	public BackupObject get(final String nick) {
-		Path path = Paths.get(nick);
+	public BackupObject get(final Path path) {
 		if (path.getNameCount() == 1) {
-			if (blobs.containsKey(nick)) {
-				return blobs.get(nick);
+			if (blobs.containsKey(path.toString())) {
+				return blobs.get(path.toString());
 			}
-			if (trees.containsKey(nick)) {
-				return trees.get(nick);
+			if (trees.containsKey(path.toString())) {
+				return trees.get(path.toString());
 			}
 			return null;
 		}
-		String first = path.getName(0).toString();
-		if (trees.containsKey(first)) {
-			return trees.get(first).
-					get(path.subpath(1, path.getNameCount()).toString());
+		Path first = path.getName(0);
+		if (trees.containsKey(first.toString())) {
+			return trees.get(first.toString()).
+					get(first.relativize(path));
 		}
 		return null;
 	}
 	
 	/**
-	 * Get the String contains both blobs and trees and their names.
-	 * @return the String contains both blobs and trees and their names
-	 */
-	public String list() {
-		return listBlobs() + listTrees();
-	}
-	
-	/**
-	 * Get  the String contains blobs and blobs in subtrees and their names.
-	 * @return the String contains blobs and blobs in subtrees and their names
-	 */	
-	public String listAll() {
-		String s = listBlobs();
-		for (Entry<String, Tree> en:trees.entrySet()) {
-			Tree tree = en.getValue();
-			String nick = en.getKey();
-			s += "tree " + tree.toString() + " " + nick + "{\n";
-			s += tree.listAll() + "}\n";
-		}		
-		return s;
-	}
-	
-	/**
-	 * Converts tree to string. 
-	 * @return only the SHA-1 checksum
-	 */
-	@Override
-	public String toString() {
-		return getName().substring(0, 2) + getName().substring(2 + 1);
-	}
-	
-	/**
-	 * Create a empty tree.
-	 * @return a empty tree
-	 */
-	public static Tree create() {
-		return new Tree();
-	}
-	
-	/**
 	 * Create a tree contains given directory.
 	 * 
-	 * @param dir the directory to contain
+	 * @param dirPath the directory to contain
 	 * @return the tree. If fail, return null.
-	 * @throws IOException IOException.
+	 * @throws IOException if an I/O error occurs
 	 */
-	public static Tree create(final String dir) 
+	private static Tree create(final Path dirPath) 
 			throws IOException {
+		System.out.println("Create Tree for " + dirPath);
 		Tree tree = null;
-		Path dirPath = Paths.get(dir);
 		if (Files.isDirectory(dirPath)) {
-			tree = Tree.create();
+			tree = new Tree();
 			DirectoryStream<Path> paths = Files.newDirectoryStream(dirPath);
 			for (Path p:paths) {
 				if (Files.isDirectory(p)) {
-					Tree subtree = Tree.create(p.toString());
-					tree.add(subtree, p.getFileName().toString());
+					Tree subtree = Tree.create(p);
+					tree.add(subtree, dirPath.relativize(p));
 				} else {
-					Blob blob = Blob.create(p.toString());
-					tree.add(blob, p.getFileName().toString());
+					Blob blob = Blob.create(p);
+					tree.add(blob, dirPath.relativize(p));
 				}
-            } 
+            }
+			tree.calChecksum();
 		}
-		
 		return tree;
 	}
 	
@@ -202,17 +124,16 @@ public final class Tree extends BackupObject {
 	 */
 	public static Tree create(final TreeBuilder tb) 
 			throws IOException {
-		Tree tree = null;
+		Tree tree = new Tree();
 		if (tb.getMap().size() > 0) {
-			tree = Tree.create();
 			for (Entry<String, String> en:tb.getMap().entrySet()) {
 				Path dirPath = Paths.get(en.getKey());
 				if (Files.isDirectory(dirPath)) {
-					Tree subtree = Tree.create(dirPath.toString());
-					tree.add(subtree, en.getValue());
+					Tree subtree = Tree.create(dirPath);
+					tree.add(subtree, Paths.get(en.getValue()));
 				} else {
-					Blob blob = Blob.create(dirPath.toString());
-					tree.add(blob, en.getValue());
+					Blob blob = Blob.create(dirPath);
+					tree.add(blob, Paths.get(en.getValue()));
 				}
 			}
 		}
@@ -221,63 +142,59 @@ public final class Tree extends BackupObject {
 	
 	/**
 	 * Add a new blob to this tree.
+	 * If the path already exist, fail.
 	 * 
 	 * @param blob the blob to add
-	 * @param nick the nickname of the blob to add, can be a path.
+	 * @param path the nickname path of the blob to add, can be a path.
 	 * @return totally success or not
 	 */
-	public boolean add(final Blob blob, final String nick) {
+	private boolean add(final Blob blob, final Path path) {
 		boolean flag = true;
-		Path path = Paths.get(nick);
 		if (path.getNameCount() == 1) {
-			if (blobs.containsKey(nick)) {
+			if (blobs.containsKey(path.toString())) {
 				flag = false;
 			} else {
-				blobs.put(nick, blob);
-				calName();
+				blobs.put(path.toString(), blob);
 			}	
 		} else {
-			String first = path.getName(0).toString();
-			if (!trees.containsKey(first)) {
-				add(Tree.create(), first);
+			Path first = path.getName(0);
+			if (!trees.containsKey(first.toString())) {
+				add(new Tree(), first);
 			}
-			if (trees.get(first).add(blob, 
-					path.subpath(1, path.getNameCount()).toString())) {
+			if (!trees.get(first).add(blob, first.relativize(path))) {
 				flag = false;
 			}
-			calName();
 		}
+		calChecksum();
 		return flag;
 	}
 	
 	/**
 	 * Add a new tree to this tree.
+	 * If the path already exist, fail.
 	 * 
 	 * @param tree the tree to add
-	 * @param nick the nickname of the tree to add, can be a path.
+	 * @param path the nickname path of the tree to add, can be a path.
 	 * @return success or not
 	 */
-	public boolean add(final Tree tree, final String nick) {
+	private boolean add(final Tree tree, final Path path) {
 		boolean flag = true;
-		Path path = Paths.get(nick);
 		if (path.getNameCount() == 1) {
-			if (trees.containsKey(nick)) {
+			if (trees.containsKey(path.toString())) {
 				flag = false;
 			} else {
-				trees.put(nick, tree);
-				calName();
+				trees.put(path.toString(), tree);
 			}
 		} else {
-			String first = path.getName(0).toString();
-			if (!trees.containsKey(first)) {
-				add(Tree.create(), first);
+			Path first = path.getName(0);
+			if (!trees.containsKey(first.toString())) {
+				add(new Tree(), first);
 			}
-			if (trees.get(first).add(tree, 
-					path.subpath(1, path.getNameCount()).toString())) {
+			if (!trees.get(first).add(tree, first.relativize(path))) {
 				flag = false;
-			}
-			calName();			
+			}	
 		}
+		calChecksum();
 		return flag;
 	}
 	
@@ -286,28 +203,27 @@ public final class Tree extends BackupObject {
 	 * If a file in the tree already exist,
 	 * this method will rewrite the file.
 	 *  
-	 * @param dir the directory to restore this tree
+	 * @param outFileDir the directory to restore this tree
 	 * @return totally success or not.
-	 * @throws IOException if the file is not found or the cannot be read.
-	 * @throws DataFormatException  if the file in the blob is not a blob.
+	 * @throws IOException if an I/O error occurs
 	 */
-	public boolean restore(final String dir) 
-			throws IOException, DataFormatException {
+	@Override
+	public boolean restore(final Path outFileDir) 
+			throws IOException {
+		System.out.println("Restore Tree to " + outFileDir);
 		boolean flag = true;
-		System.out.println("Restore to " + dir);
-		Path outFileDir = Paths.get(dir);
 		Files.createDirectories(outFileDir);
 		for (Entry<String, Blob> en:blobs.entrySet()) {
 			Blob blob = en.getValue();
-			String nick = en.getKey();
-			if (!blob.restore(dir + "/" + nick)) {
+			Path nick = Paths.get(en.getKey());
+			if (!blob.restore(outFileDir.resolve(nick))) {
 				flag = false;
 			}
 		}
 		for (Entry<String, Tree> en:trees.entrySet()) {
 			Tree tree = en.getValue();
-			String nick = en.getKey();
-			if (!tree.restore(dir + "/" + nick)) {
+			Path nick = Paths.get(en.getKey());
+			if (!tree.restore(outFileDir.resolve(nick))) {
 				flag = false;
 			}
 		}
@@ -316,6 +232,8 @@ public final class Tree extends BackupObject {
 	
 	/**
 	 * Restore the tree according to treeRestorer.
+	 * If a file not in the tree already exist,
+	 * this method will not delete the file.
 	 * If a file in the tree already exist,
 	 * this method will rewrite the file.
 	 *  
@@ -327,10 +245,9 @@ public final class Tree extends BackupObject {
 	public boolean restore(final TreeRestorer tr) 
 			throws IOException, DataFormatException {
 		boolean flag = true;
-		TreeMap<String, String> map = tr.getMap();
-		for (Entry<String, String> en:map.entrySet()) {
-			String nick = en.getKey();
-			String path = en.getValue();
+		for (Entry<String, String> en:tr.getMap().entrySet()) {
+			Path nick = Paths.get(en.getKey());
+			Path path = Paths.get(en.getValue());
 			BackupObject o = get(nick);
 			if (!o.restore(path)) {
 				flag = false;
@@ -339,135 +256,117 @@ public final class Tree extends BackupObject {
 		return flag;
 	}
 	
+	/**
+	 * Converts tree to string.
+	 * @return the string
+	 */
+	@Override
+	public String toString() {
+		return "Tree " + getChecksum() + "\n";
+	}	
 	
 	/**
-	 * Save this tree object into file system.
-	 * If this tree object already exist, do nothing.
-	 * @return SHA-1 checksum of this tree
-	 * @throws IOException  if the file is not found or the cannot be read.
+	 * Get the string representation of blobs and their names.
+	 * @param depth the depth of the blob
+	 * @return the string contains blobs and their names
 	 */
-	public String save() throws IOException {
-		Path outFilePath = Paths.get(getObjectDir() + "/" + getName());
-		
-		// Create output file directory.
-		Files.createDirectories(outFilePath.getParent());
-		if (!Files.exists(outFilePath)) {
-			System.out.println(
-					"Compress tree " + getName()
-					+ " to " + outFilePath);
-			CompressionUtil.compress(list(), 
-					outFilePath.toString(), true);
+	public String listBlobs(final int depth) {
+		String s = "";
+		String dp = "";
+		for (int i = 0; i < depth; i++) {
+			dp += INDENT;
 		}
-		// Save subtrees.
+		for (Entry<String, Blob> en:blobs.entrySet()) {
+			Blob blob = en.getValue();
+			Path nick = Paths.get(en.getKey());
+			s += dp + nick + ": " + blob.toString();
+		}
+		return s;
+	}
+	
+	/**
+	 * Get the string representation of blobs and their names.
+	 * @return the string contains blobs and their names
+	 */
+	public String listBlobs() {
+		return listBlobs(0);
+	}
+	
+	/**
+	 * Get the string representation of trees and their names.
+	 * @param depth the depth of the tree
+	 * @return the string contains trees and their names
+	 */
+	public String listTrees(final int depth) {
+		String s = "";
+		String dp = "";
+		for (int i = 0; i < depth; i++) {
+			dp += INDENT;
+		}
 		for (Entry<String, Tree> en:trees.entrySet()) {
 			Tree tree = en.getValue();
-			tree.save();
-		}	
-		return toString();
+			Path nick = Paths.get(en.getKey());
+			s += dp + nick + ": " + tree.toString();
+		}
+		return s;
+	}
+
+	/**
+	 * Get the string representation of trees and their names.
+	 * @return the string contains trees and their names
+	 */
+	public String listTrees() {
+		return listTrees(0);
+	}
+
+	/**
+	 * Get the String contains both blobs and trees and their names.
+	 * @param depth the depth of the tree
+	 * @return the String contains both blobs and trees and their names
+	 */
+	public String list(final int depth) {
+		return listBlobs(depth) + listTrees(depth);
 	}
 	
 	/**
-	 * Load tree object with given checksum.
-	 * @param checksum checksum of the tree.
-	 * @return the loaded tree
-	 * @throws IOException if the file is not found or the cannot be read.
-	 * @throws DataFormatException  if the file in the blob is not a blob.
+	 * Get the String contains both blobs and trees and their names.
+	 * @return the String contains both blobs and trees and their names
 	 */
-	public static Tree load(final String checksum)
-			throws IOException, DataFormatException {
-		String name = checksumToName(checksum);
-		String inFileName = getObjectDir() + "/" + name;
-		//System.out.println(inFileName);
-		String list = CompressionUtil.decompress(inFileName);
-		//System.out.println(list);
-		Tree tree = Tree.create();
-		String[] objects = list.split("\n");
-		for (String s: objects) {
-			String[] parts = s.split(" ");
-			if (parts.length > 2) {
-				if (parts[0].equals("blob")) {
-					Blob blob = Blob.get(parts[1]);
-					String nick = parts[2];
-					tree.add(blob, nick);
-				} else {
-					Tree subtree = Tree.load(parts[1]);
-					String nick = parts[2];
-					tree.add(subtree, nick);
-				}
-			}
-		}
-		return tree;
+	public String list() {
+		return toString() + listBlobs(1) + listTrees(1);
 	}
 	
 	/**
-	 * Testing code.
-	 * @param args args
-	 */
-	public static void main(final String[] args) {
-		String oriFile = "data/test";
-		String treeDir = "data/tree";
-		Blob b1 = null;
-		Blob b2 = null;
-		try {
-			b1 = Blob.create(oriFile);
-			b2 = Blob.create(oriFile);
-		} catch (IOException e) {
-			e.printStackTrace();
+	 * Get the String contains blobs and blobs in subtrees and their names.
+	 * @param depth the depth of the tree
+	 * @return the String contains blobs and blobs in subtrees and their names
+	 */	
+	public String listAll(final int depth) {
+		String s = listBlobs(depth);
+		String dp = "";
+		for (int i = 0; i < depth; i++) {
+			dp += INDENT;
 		}
-		
-		Tree t = Tree.create();
-		System.out.println(t.toString());
-		System.out.println(t.list());
-		
-		t.add(b1, "file1");
-		t.add(b2, "file2");
-		System.out.println(t.toString());
-		System.out.println(t.list());	
-		
-		Tree t2 = Tree.create();
-		t2.add(b1, "file3");
-		t2.add(b1, "file4");
-		t2.add(Tree.create(), "emptyDir1");
-		t2.add(Tree.create(), "emptyDir2");
-		t.add(t2, "dir");
-		System.out.println(t.toString());
-		System.out.println(t.list());	
+		for (Entry<String, Tree> en:trees.entrySet()) {
+			Tree tree = en.getValue();
+			Path nick = Paths.get(en.getKey());
+			s += dp + nick + ": " + tree.toString();
+			s += dp + "{\n";
+			s += tree.listAll(depth + 1);
+			s += dp + "}\n";
+		}		
+		return s;
+	}
 	
-		String checksum = null;
-		try {
-			checksum = t.save();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		
-		try {
-			t = Tree.load(checksum);
-		} catch (IOException | DataFormatException e1) {
-			e1.printStackTrace();
-		}
-		
-		try {
-			t.restore(treeDir);
-		} catch (IOException | DataFormatException e) {
-			e.printStackTrace();
-		}
-		
-		Tree newTree = null;
-		try {
-			newTree = Tree.create(treeDir);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		t.add(newTree, "newdir/newdir2/FullTree");
-		
-		System.out.println(t.toString());
-		System.out.println(t.list());
-
-		try {
-			t.restore(treeDir);
-		} catch (IOException | DataFormatException e) {
-			e.printStackTrace();
-		}
-
+	/**
+	 * Get the String contains blobs and blobs in subtrees and their names.
+	 * @return the String contains blobs and blobs in subtrees and their names
+	 */	
+	public String listAll() {
+		String s = toString();
+		s += "{\n";
+		s += listAll(1);
+		s += "}\n";
+		return s;
 	}
 }

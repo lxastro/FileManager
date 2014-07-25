@@ -1,4 +1,7 @@
 data/
 object/*/*
 doc/
+backup/
 *.class
+setting/recover
+setting/backup

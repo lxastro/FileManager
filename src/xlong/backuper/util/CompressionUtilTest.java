@@ -1,8 +1,10 @@
 package xlong.backuper.util;
 
 import static org.junit.Assert.assertEquals;
+
 import java.io.IOException;
-import java.util.zip.DataFormatException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import org.junit.Test;
 
@@ -15,23 +17,24 @@ public class CompressionUtilTest {
 
 	/**
 	 * Test method for 
-	 * {@link xlong.backuper.util.CompressionUtil#compress(String, String)} 
+	 * {@link xlong.backuper.util.CompressionUtil#compress(Path, Path)} 
 	 * and
-	 * {@link xlong.backuper.util.CompressionUtil#decompress(String, String)}.
+	 * {@link xlong.backuper.util.CompressionUtil#decompress(Path, Path)}.
 	 */
 	@Test
 	public final void test() {
 		String oriFile = "data/test";
-		String zipFile = oriFile + ".zlib";
-		String newFile = oriFile + "_new";
+		Path oriPath = Paths.get(oriFile);
+		Path zipPath = Paths.get(oriFile + ".zlib");
+		Path newPath = Paths.get(oriFile + "_new");
 		String checksumOri = null;
 		String checksumNew = null;
 		try {
-			CompressionUtil.compress(oriFile, zipFile);
-			CompressionUtil.decompress(zipFile, newFile);
-			checksumOri = SHA1Util.sha1Checksum(oriFile);
-			checksumNew = SHA1Util.sha1Checksum(newFile);
-		} catch (IOException | DataFormatException e) {
+			CompressionUtil.compressFile(oriPath, zipPath);
+			CompressionUtil.decompressToFile(zipPath, newPath);
+			checksumOri = SHA1Util.sha1Checksum(oriPath);
+			checksumNew = SHA1Util.sha1Checksum(newPath);
+		} catch (IOException e) {
 			org.junit.Assert.fail();
 			e.printStackTrace();
 		}

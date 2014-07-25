@@ -3,9 +3,7 @@ package xlong.backuper.object;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.zip.DataFormatException;
 
 import xlong.backuper.util.CompressionUtil;
 import xlong.backuper.util.SHA1Util;
@@ -29,6 +27,9 @@ import xlong.backuper.util.SHA1Util;
  */
 public final class Blob extends BackupObject {
 	
+	/** for serialization. */
+	private static final long serialVersionUID = -4807521920350645024L;
+
 	/** the limit of compressing file. */
 	private static final int COMPRESSLIM = 1000000000;
 	
@@ -36,117 +37,86 @@ public final class Blob extends BackupObject {
 	private boolean compressed;
 	/**
 	 * Constructor just available in this class.
-	 * Change the checksum to the name of this blob.
+	 * Set the checksum of the blob. 
 	 * @param checksum the checksum of a file this blob stores.
 	 */
 	private Blob(final String checksum) {
-		setName(checksumToName(checksum));
+		setChecksum(checksum);
 	}
-	
 
-	
+
 	/**
-	 * Creates a blob contains the content of a file.
-	 * If the blob already exist, just return the exist one.
+	 * Save the file to the file system, 
+	 * if the file not exist in the file system.
+	 * Creates a new blob contains the checksum of the file.
 	 * 
-	 * @param fileName the file whose content the blob contains.
+	 * @param filePath the file to save.
 	 * @return the created Blob
-	 * @throws IOException if the file is not found or the cannot be read.
+	 * @throws IOException if an I/O error occurs
 	 */
-	public static Blob create(
-			final String fileName) 
+	protected static Blob create(
+			final Path filePath) 
 					throws IOException {
-		String checksum = SHA1Util.sha1Checksum(fileName);
+		System.out.println("Create Blob for " + filePath);
+		String checksum = SHA1Util.sha1Checksum(filePath);
 		Blob blob = new Blob(checksum);
 		
-		Path inFilePath = Paths.get(fileName);
-		Path outFilePath = Paths.get(getObjectDir() + "/" + blob.getName());
-	
-		
-		// Create output file directory.
-		Files.createDirectories(outFilePath.getParent());
+		Path outFilePath = blob.getPath();
 
+		Files.createDirectories(outFilePath.getParent());
 		
-		if (Files.size(inFilePath) < COMPRESSLIM) {
+		if (Files.size(filePath) < COMPRESSLIM) {
+			// compress small file
 			if (!Files.exists(outFilePath)) {
 				System.out.println(
-						"Compress " + inFilePath + " to " + outFilePath);
-				CompressionUtil.compress(fileName, 
-						outFilePath.toString());
+						"Compress " + filePath + " to " + outFilePath);
+				CompressionUtil.compressFile(filePath, outFilePath); 
 			}
 			blob.compressed = true;
-		} else {	
+		} else {
+			// copy big file
 			if (!Files.exists(outFilePath)) {
-				System.out.println("Copy " + inFilePath + " to " + outFilePath);
-				Files.copy(inFilePath, outFilePath);
+				System.out.println(
+						"Copy " + filePath + " to " + outFilePath);
+				Files.copy(filePath, outFilePath);
 			}
 			blob.compressed = false;
 		}
-		
 		return blob;
 	}
-	
-	/**
-	 * Restore a blob to the file with given fileName.
-	 * If the file already exist, this method will rewrite the file.
-	 * 
-	 * @param blob the blob to restore
-	 * @param fileName the fileName of the file restores to
-	 * @return success or not.
-	 * @throws DataFormatException if the file in the blob is not a blob.
-	 * @throws IOException if the file is not found or the cannot be read.
-	 */
-	public static boolean restore(
-			final Blob blob, 
-			final String fileName)
-					throws IOException, DataFormatException {
-		Path inFilePath = Paths.get(getObjectDir() + "/" + blob.getName());
-		Path outFilePath = Paths.get(fileName);
-		if (!Files.isDirectory(outFilePath.getParent())) {
-			Files.createDirectories(outFilePath.getParent());
-		}
 
-		if (blob.compressed) {
+	/**
+	 * Restore this blob to the file with given path.
+	 * If a file is already exist,
+	 * this method will rewrite the file.
+	 * If the output directory not exist,
+	 * this method will create the directory.
+	 * 
+	 * @param outFilePath the path of the file restores to
+	 * @return success or not
+	 * @throws IOException if an I/O error occurs
+	 */
+	@Override
+	public boolean restore(final Path outFilePath) 
+			throws IOException {
+		Path inFilePath = getPath();
+		System.out.println("Restore Blob to " + outFilePath);
+		
+		Files.createDirectories(outFilePath.getParent());
+
+		if (compressed) {
 			System.out.println(
-					"Decompress " + inFilePath + " to " + fileName);
-			CompressionUtil.decompress(inFilePath.toString(), fileName);
+					"Decompress " + inFilePath + " to " + outFilePath);
+			CompressionUtil.decompressToFile(inFilePath, outFilePath);
 		} else {
-			System.out.println("Copy " + inFilePath + " to " + fileName);
-			Files.copy(inFilePath, Paths.get(fileName),
+			System.out.println(
+					"Copy " + inFilePath + " to " + outFilePath);
+			Files.copy(inFilePath, outFilePath,
 					StandardCopyOption.REPLACE_EXISTING);
 		}
 		return true;
 	}
-
-	/**
-	 * Restore this blob to the file with given fileName.
-	 * If the file already exist, this method will rewrite the file.
-	 * 
-	 * @param fileName the fileName of the file restores to
-	 * @return success or not.
-	 * @throws DataFormatException if the file in the blob is not a blob.
-	 * @throws IOException if the file is not found or the cannot be read.
-	 */
-	public boolean restore(final String fileName) 
-			throws IOException, DataFormatException {
-		return Blob.restore(this, fileName);
-	}
 	
-	
-	/**
-	 * Gets the blob from its string representation.
-	 * @param string the string representation of blob
-	 * @return the blob
-	 */
-	public static Blob get(final String string) {
-		Blob blob = new Blob(string.substring(2));
-		if (string.startsWith("c")) {
-			blob.compressed = true;
-		} else {
-			blob.compressed = false;
-		}
-		return blob;
-	}
 	/**
 	 * Converts blob to string.
 	 * @return the string
@@ -154,11 +124,9 @@ public final class Blob extends BackupObject {
 	@Override
 	public String toString() {
 		if (compressed) {
-			return "c_" + getName().substring(0, 2) 
-					+ getName().substring(2 + 1);
+			return "Blob compress " + getChecksum() + "\n";
 		} else {
-			return "o_" + getName().substring(0, 2) 
-					+ getName().substring(2 + 1);
+			return "Blob original " + getChecksum() + "\n";
 		}	
 	}
 }

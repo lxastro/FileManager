@@ -2,6 +2,7 @@ package xlong.backuper.util;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -38,12 +39,12 @@ public final class SHA1Util {
 	/**
 	 * Gets the SHA-1 checksum of the file with given name.
 	 * 
-	 * @param filePath name of the file to get checksum.
+	 * @param filePath the path of the file to get checksum.
 	 * @return the hexadecimal representation checksum of the file.
 	 * @throws IOException if the file is not found or the cannot be read.
 	 */
 	public static String sha1Checksum(
-			final String filePath) 
+			final Path filePath) 
 			throws IOException {
 		
         MessageDigest sha1 = null;
@@ -53,7 +54,7 @@ public final class SHA1Util {
 			e.printStackTrace();
 		}
 		
-        FileInputStream fis = new FileInputStream(filePath);
+        FileInputStream fis = new FileInputStream(filePath.toString());
         byte[] data = new byte[MAXBYTE];
         int read = 0; 
         while ((read = fis.read(data)) != -1) {
@@ -76,13 +77,10 @@ public final class SHA1Util {
 	 * Gets the SHA-1 checksum of the given string.
 	 * 
 	 * @param input the string to get checksum.
-	 * @param flag a tag to differ from {@link #sha1Checksum(String)}.
-	 * 				   Sets to any if need the checksum of the given string.
 	 * @return the hexadecimal representation checksum of the string.
 	 */
 	public static String sha1Checksum(
-			final String input, 
-			final boolean flag) {
+			final String input) {
 		
         MessageDigest sha1 = null;
 		try {
@@ -102,4 +100,31 @@ public final class SHA1Util {
         return sb.toString();
 	}
 
+	/**
+	 * Gets the SHA-1 checksum of the given bytesArray.
+	 * 
+	 * @param bytesArray the bytesArray to get checksum.
+	 * @return the hexadecimal representation checksum of the string.
+	 */
+	public static String sha1Checksum(
+			final byte[] bytesArray) {
+		
+        MessageDigest sha1 = null;
+		try {
+			sha1 = MessageDigest.getInstance("SHA1");
+		} catch (NoSuchAlgorithmException e) {
+			e.printStackTrace();
+		}
+        
+        byte[] hashBytes = sha1.digest(bytesArray);
+        StringBuffer sb = new StringBuffer();
+        for (int i = 0; i < hashBytes.length; i++) {
+          sb.append(Integer
+        		  .toString((hashBytes[i] & C1) + C2, BASE)
+        		  .substring(1));
+        }
+        
+        return sb.toString();
+	}
+	
 }
