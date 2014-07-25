@@ -54,6 +54,22 @@ public final class BackupManager implements Serializable {
 		return treeBuilder;
 	}
 	
+	/**
+	 * set treeBuilder.
+	 * @param tb treeBuilder
+	 */
+	public void setTreeBuilder(final TreeBuilder tb) {
+		treeBuilder = tb;
+	}
+	
+	/**
+	 * set treeRestorer.
+	 * @param tr treeRestorer
+	 */
+	public void setTreeRestorer(final TreeRestorer tr) {
+		treeRestorer = tr;
+	}
+	
 	/** get file path. 
 	 * @return the path
 	 */

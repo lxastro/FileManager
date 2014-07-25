@@ -1,5 +1,5 @@
-单独文件,>>>>,D\recoverData\test
-复杂文件夹,>>>>,D\recoverData\复杂的文件夹
-文件夹1,>>>>,D\recoverData\简单文件夹1
-文件夹2,>>>>,D\recoverData\简单文件夹2
-绝对路径1,>>>>,D\recoverData\doc
+单独文件,>>>>,D:\recoverData\test
+复杂文件夹,>>>>,D:\recoverData\复杂的文件夹
+文件夹1,>>>>,D:\recoverData\简单文件夹1
+文件夹2,>>>>,D:\recoverData\简单文件夹2
+绝对路径1,>>>>,D:\recoverData\doc
