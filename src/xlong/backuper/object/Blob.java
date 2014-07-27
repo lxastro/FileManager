@@ -31,7 +31,7 @@ public final class Blob extends BackupObject {
 	private static final long serialVersionUID = -4807521920350645024L;
 
 	/** the limit of compressing file. */
-	private static final int COMPRESSLIM = 1000000000;
+	private static final int COMPRESSLIM = 100000000;
 	
 	/** the blob is compressed or not. */
 	private boolean compressed;
