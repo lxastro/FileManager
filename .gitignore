@@ -5,4 +5,5 @@ backup/
 *.class
 setting/recover
 setting/backup
-
+.classpath
+/bin/
